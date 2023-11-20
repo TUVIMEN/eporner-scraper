@@ -1,0 +1,166 @@
+#!/bin/bash
+# by Dominik Stanisław Suchora <suchora.dominik7@gmail.com>
+# License: GNU GPLv3
+
+ucurl() {
+    curl -L -g -s --user-agent 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/5.15.2 Chrome/87.0.4280.144 Safari/537.36' -H 'Accept-Encoding: gzip, deflate' --compressed -H 'Cookie: kt_agecheck=1; kt_tcookie=1' "$@"
+}
+
+declare threads='4' dir='.'
+declare -r arg0="$(basename "$0")"
+
+usage() {
+    printf '%s [OPTION...] [DIR]\n' "$(basename "$0")"
+    printf "Archive eporner videos and playlists in json.\n"
+    printf "Type of page depends on [-pv] options.\n"
+    printf "Pages will be saved in files named by their sha256 hash of urls and placed in DIR.\n\n"
+    printf "Options:\n"
+    printf "  -t NUM\tset number of used threads, by default set to 4\n"
+    printf "  -v\t\tvideos\n"
+    printf "  -p\t\tplaylists\n"
+    printf "  -h\t\tshow help\n"
+}
+
+get_v_json() {
+    local -r t="$(ucurl "$1" | tr -d '\n\r\t')"
+    local t2
+    {
+    t2="${1#https://www.eporner.video/}"
+    echo "${t2%%/*}"
+
+    echo "$(hgrep 'meta +property=og:title +content @p"%(content)a\n"' <<< "$t")" #title
+    echo "$(hgrep 'meta +property=og:image +content @p"%(content)a\n"' <<< "$t")" #thumbnail
+    echo "$(hgrep 'meta +name=twitter:description +content @p"%(content)a\n"' <<< "$t")" #desc
+    echo "$(hgrep 'meta +property=video:release_date +content @p"%(content)a\n"' <<< "$t")" #date
+    echo "$(hgrep 'meta +property=video:duration +content @p"%(content)a\n"' <<< "$t")" #duration
+    echo "$(hgrep 'meta +property=og:video:width +content @p"%(content)a", meta +property=og:video:height +content @p"x%(content)a\n"' <<< "$t")" #resolution
+    echo "$(hgrep 'meta +property=ya:ovs:views_total +content @p"%(content)a\n"' <<< "$t")" #views
+    echo "$(hgrep 'meta +property=ya:ovs:comments +content @p"%(content)a\n"' <<< "$t")" #comments
+    echo "$(hgrep 'meta +property=ya:ovs:rating +content @p"%(content)a\n"' <<< "$t")" #rating
+    echo "$(hgrep '.* +data-votes @p"%(data-votes)a\n"' <<< "$t")" #votes
+    echo "$(hgrep 'div +class=block-user; a -class=avatar @p"%i\n"' <<< "$t" | sed 's/<[^>]*>[^<]*<\/[^>]*>//g; s/ *$//')" #author
+    echo "$(hgrep 'div +class=block-user; a -class=avatar +href @p"%(href)a\n"' <<< "$t" | sed 's/\/$//;s/.*\///')" #author_id
+    echo "$(hgrep 'div +id=tab_video_info; a +href=".*/category/.*" @p"%i\t"' <<< "$t")" #categories
+    echo "$(hgrep 'div +id=tab_video_info; a +href=".*/tag/.*" @p"%i\t"' <<< "$t")" #tags
+    echo "$(hgrep 'div +id=tab_video_info; a +href=".*/model/.*"; .* @M"<" @p"%i\t"' <<< "$t")" #models
+    echo "$(hgrep 'div +id=tab_video_info; a +href=".*/get_file/.*" @p"%i\t"' <<< "$t")" #formats
+    echo "$(hgrep 'script @m"var flashvars = {" @p"%i\n"' <<< "$t" | sed "s/.*timeline_screens_url: '//;s/'.*//")" #timeline
+    echo "$(hgrep 'script @m"var flashvars = {" @p"%i\n"' <<< "$t" | sed "s/.*timeline_screens_count: '//;s/'.*//")" #timeline_count
+    echo "$(hgrep 'span +class=message @m"This video is a private video uploaded by " @p"1"' <<< "$t")" #private
+    } | jq -RnMc '
+        .["id"]=input |
+        .["title"]=input |
+        .["thumbnail"]=input |
+        .["desc"]=input |
+        .["date"]=input |
+        .["duration"]=input |
+        .["resolution"]=input |
+        .["views"]=input |
+        .["comments"]=input |
+        .["rating"]=input |
+        .["votes"]=input |
+        .["author"]=input |
+        .["author_id"]=input |
+        .["categories"]=(input | split("\t")[:-1]) |
+        .["tags"]=(input | split("\t")[:-1]) |
+        .["models"]=(input | split("\t")[:-1]) |
+        .["formats"]=(input | split("\t")[:-1]) |
+        .["timeline"]=input |
+        .["timeline_count"]=input |
+        .["private"]=input'
+}
+
+get_p_json() {
+    local last current='1' t="$(ucurl "$1" | tr -d '\n\t\r')" t2
+    last="$(hgrep -F 'li +class=last; a +data-parameters @p"%(data-parameters)a\n"' <<< "$t" | sed 's/.*from://')"
+    [ -z "$last" ] && last='1'
+    
+    {
+    t2="${1#https://www.eporner.video/playlist/}"
+    echo "${t2%%/*}" #id
+    echo "$(hgrep 'div +class=headline; h1 @p"%i\n"' <<< "$t")" #title
+    echo "$(hgrep 'div +id=tab_playlist_info; span @m"Views:"; em @p"%i\n"' <<< "$t")" #views
+    echo "$(hgrep 'div +id=tab_playlist_info; span @m"Updated:"; em @p"%i\n"' <<< "$t")" #date
+    echo "$(hgrep 'div +id=tab_playlist_info; div +class=username; a +href @p"%i\n"' <<< "$t")" #author
+    echo "$(hgrep 'div +id=tab_playlist_info; div +class=username; a +href @p"%(href)a\n"' <<< "$t" | sed 's/\/$//;s/.*\///')" #author_id
+    while :
+    do
+        hgrep -F 'div +id=playlist_view_playlist_view_items; a +href @p"%(href)a\t"' <<< "$t"
+        ((current++))
+        [ "$current" -gt "$last" ] && break
+        t="$(ucurl "https://www.eporner.video/playlist/60/bideo/?mode=async&function=get_block&block_id=playlist_view_playlist_view&sort_by=added2fav_date&from=$current" -H 'X-Requested-With: XMLHttpRequest' | tr -d '\n\t\r')"
+    done #videos
+    echo
+    } | jq -RnMc '
+        .["id"]=input |
+        .["title"]=input |
+        .["views"]=input |
+        .["date"]=input |
+        .["author"]=input |
+        .["author_id"]=input |
+        .["videos"]=((input | split("\t"))[:-1])'
+}
+
+videos() {
+    local last current='1' t="$(ucurl 'https://www.eporner.video/latest-updates/' | tr -d '\n\t\r')" rh rn
+    last="$(hgrep -F 'li +class=last; a +data-parameters @p"%(data-parameters)a\n"' <<< "$t" | sed 's/.*from://')"
+    [ -z "$last" ] && last='1'
+
+    while :
+    do
+        for i in $(hgrep -F 'div +id=list_videos_latest_videos_list_items; a +href @p"%(href)a\n"' <<< "$t")
+        do
+            [ "$(jobs | wc -l)" -gt "$threads" ] && wait %%
+            rh="$(sha256sum <<< "$i")"
+            rn="${rh%  *}"
+            [ -e "$rn" ] && continue
+            echo "$i"
+            get_v_json "$i" > "$rn" &
+        done
+        ((current++))
+        [ "$current" -gt "$last" ] && break
+        t="$(ucurl "https://www.eporner.video/latest-updates/?mode=async&function=get_block&block_id=list_videos_latest_videos_list&sort_by=post_date&from=$current" -H 'X-Requested-With: XMLHttpRequest' | tr -d '\n\t\r')"
+    done
+}
+
+playlists() {
+    local last current='1' t="$(ucurl 'https://www.eporner.video/playlists/' | tr -d '\n\t\r')" rh rn
+    last="$(hgrep -F 'li +class=last; a +data-parameters @p"%(data-parameters)a\n"' <<< "$t" | sed 's/.*from://')"
+    [ -z "$last" ] && last='1'
+
+    while :
+    do
+        for i in $(hgrep -F 'div +id=list_playlists_common_playlists_list; a +href +title @p"%(href)a\n"' <<< "$t")
+        do
+            [ "$(jobs | wc -l)" -gt "$threads" ] && wait %%
+            rh="$(sha256sum <<< "$i")"
+            rn="${rh%  *}"
+            [ -e "$rn" ] && continue
+            echo "$i"
+            get_p_json "$i" > "$rn" &
+        done
+        ((current++))
+        [ "$current" -gt "$last" ] && break
+        t="$(ucurl "https://www.eporner.video/playlists/?mode=async&function=get_block&block_id=list_playlists_common_playlists_list&sort_by=rating&from=$current" -H 'X-Requested-With: XMLHttpRequest' | tr -d '\n\t\r')"
+    done
+}
+
+[ "$#" -eq '0' ] && { usage >&2; exit 1; }
+
+while [ "$#" -gt 0 ]
+do
+    case "$1" in
+        -t) threads="$2"; shift;;
+        -p) func='playlists';;
+        -v) func='videos';;
+        -h) usage; exit 0;;
+        -*) printf '%s: invalid argument -- %s\n' "$(basename "$0")" "$1" >&2; exit 1;;
+        *) dir="$1";;
+    esac
+    shift
+done
+
+[ -z "$func" ] && { printf '%s: No option specified the type of pages\n' "$(basename "$0")" >&2; exit 1; }
+cd "$dir" || exit 1
+
+$func
