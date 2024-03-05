@@ -1,4 +1,4 @@
-# eporner
+# eporner-scraper
 
 A bash script for archiving eporner videos and playlists metadata in json.
 
@@ -9,7 +9,7 @@ A bash script for archiving eporner videos and playlists metadata in json.
 
 ## Installation
 
-    install -m 755 eporner /usr/bin
+    install -m 755 eporner-scraper /usr/bin
 
 ## Json format
 
@@ -27,8 +27,8 @@ Results will be saved in files named by their sha256 hash of urls and placed in 
 
 Download metadata of videos in DIR
 
-    eporner -v DIR
+    eporner-scraper -v DIR
 
 Download metadata of playlists in DIR
 
-    eporner -p DIR
+    eporner-scraper -p DIR
