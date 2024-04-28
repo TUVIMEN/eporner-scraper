@@ -27,26 +27,27 @@ get_v_json() {
     {
     t2="${1#https://www.eporner.video/}"
     echo "${t2%%/*}"
-
-    echo "$(hgrep 'meta +property=og:title +content | "%(content)a\n"' <<< "$t")" #title
-    echo "$(hgrep 'meta +property=og:image +content | "%(content)a\n"' <<< "$t")" #thumbnail
-    echo "$(hgrep 'meta +name=twitter:description +content | "%(content)a\n"' <<< "$t")" #desc
-    echo "$(hgrep 'meta +property=video:release_date +content | "%(content)a\n"' <<< "$t")" #date
-    echo "$(hgrep 'meta +property=video:duration +content | "%(content)a\n"' <<< "$t")" #duration
-    echo "$(hgrep 'meta +property=og:video:width +content | "%(content)a", meta +property=og:video:height +content | "x%(content)a\n"' <<< "$t")" #resolution
-    echo "$(hgrep 'meta +property=ya:ovs:views_total +content | "%(content)a\n"' <<< "$t")" #views
-    echo "$(hgrep 'meta +property=ya:ovs:comments +content | "%(content)a\n"' <<< "$t")" #comments
-    echo "$(hgrep 'meta +property=ya:ovs:rating +content | "%(content)a\n"' <<< "$t")" #rating
-    echo "$(hgrep '.* +data-votes | "%(data-votes)a\n"' <<< "$t")" #votes
-    echo "$(hgrep 'div +class=block-user; a -class=avatar | "%i\n"' <<< "$t" | sed 's/<[^>]*>[^<]*<\/[^>]*>//g; s/ *$//')" #author
-    echo "$(hgrep 'div +class=block-user; a -class=avatar +href | "%(href)a\n"' <<< "$t" | sed 's/\/$//;s/.*\///')" #author_id
-    echo "$(hgrep 'div +id=tab_video_info; a +href=".*/category/.*" | "%i\t"' <<< "$t")" #categories
-    echo "$(hgrep 'div +id=tab_video_info; a +href=".*/tag/.*" | "%i\t"' <<< "$t")" #tags
-    echo "$(hgrep 'div +id=tab_video_info; a +href=".*/model/.*"; .* @M"<" | "%i\t"' <<< "$t")" #models
-    echo "$(hgrep 'div +id=tab_video_info; a +href=".*/get_file/.*" | "%i\t"' <<< "$t")" #formats
-    echo "$(hgrep 'script @m"var flashvars = {" | "%i\n"' <<< "$t" | sed "s/.*timeline_screens_url: '//;s/'.*//")" #timeline
-    echo "$(hgrep 'script @m"var flashvars = {" | "%i\n"' <<< "$t" | sed "s/.*timeline_screens_count: '//;s/'.*//")" #timeline_count
-    echo "$(hgrep 'span +class=message @m"This video is a private video uploaded by " | "1"' <<< "$t")" #private
+    reliq '
+        . meta property=og:title content | "%(content)v\n",
+        . meta property=og:image content | "%(content)v\n",
+        . meta name=twitter:description content | "%(content)v\n",
+        . meta property=video:release_date content | "%(content)v\n",
+        . meta property=video:duration content | "%(content)v\n",
+        . meta property=og:video:width content | "%(content)v", meta +property=og:video:height +content | "x%(content)v\n",
+        . meta property=ya:ovs:views_total content | "%(content)v\n",
+        . meta property=ya:ovs:comments content | "%(content)v\n",
+        . meta property=ya:ovs:rating content | "%(content)v\n",
+        . * +data-votes | "%(data-votes)v\n",
+        . div .block-user; a -.avatar | "%i\n" / sed "s/<[^>]*>[^<]*<\/[^>]*>//g; s/ *$//",
+        . div .block-user; a -.avatar +href | "%(href)v\n" / sed "s/\/$//;s/.*\///",
+        . div #tab_video_info; a href=a>"/category/" | "%i\t" / echo "" "\n",
+        . div #tab_video_info; a href=a>"/tag/" | "%i\t" / echo "" "\n",
+        . div #tab_video_info; a href=a>"/model/"; * c@[0] | "%i\t" / echo "" "\n",
+        . div #tab_video_info; a href=a>"/get_file/" | "%i\t" / echo "" "\n",
+        . script m@"var flashvars = {" | "%i\n" / sed "s/.*timeline_screens_url: '\''//;s/'\''.*//",
+        . script m@"var flashvars = {" | "%i\n" / sed "s/.*timeline_screens_count: '\''//;s/'\''.*//",
+        . span +class=message m@"This video is a private video uploaded by " | "1\n"
+    ' <<< "$t"
     } | jq -RnMc '
         .["id"]=input |
         .["title"]=input |
@@ -72,20 +73,22 @@ get_v_json() {
 
 get_p_json() {
     local last current='1' t="$(ucurl "$1" | tr -d '\n\t\r')" t2
-    last="$(hgrep -F 'li +class=last; a +data-parameters | "%(data-parameters)a\n"' <<< "$t" | sed 's/.*from://')"
+    last="$(reliq 'li .last; a data-parameters | "%(data-parameters)v\n"' <<< "$t" | sed 's/.*from://')"
     [ -z "$last" ] && last='1'
     
     {
     t2="${1#https://www.eporner.video/playlist/}"
     echo "${t2%%/*}" #id
-    echo "$(hgrep 'div +class=headline; h1 | "%i\n"' <<< "$t")" #title
-    echo "$(hgrep 'div +id=tab_playlist_info; span @m"Views:"; em | "%i\n"' <<< "$t")" #views
-    echo "$(hgrep 'div +id=tab_playlist_info; span @m"Updated:"; em | "%i\n"' <<< "$t")" #date
-    echo "$(hgrep 'div +id=tab_playlist_info; div +class=username; a +href | "%i\n"' <<< "$t")" #author
-    echo "$(hgrep 'div +id=tab_playlist_info; div +class=username; a +href | "%(href)a\n"' <<< "$t" | sed 's/\/$//;s/.*\///')" #author_id
+    reliq '
+        . div .headline; h1 | "%i\n",
+        . div #tab_playlist_info; span m@"Views:"; em | "%i\n",
+        . div #tab_playlist_info; span m@"Updated:"; em | "%i\n",
+        . div #tab_playlist_info; div .username; a href | "%i\n",
+        . div #tab_playlist_info; div .username; a href | "%(href)v\n" / sed "s/\/$//;s/.*\///"
+    ' <<< "$t"
     while :
     do
-        hgrep -F 'div +id=playlist_view_playlist_view_items; a +href | "%(href)a\t"' <<< "$t"
+        reliq 'div #playlist_view_playlist_view_items; a href | "%(href)v\t"' <<< "$t"
         ((current++))
         [ "$current" -gt "$last" ] && break
         t="$(ucurl "https://www.eporner.video/playlist/60/bideo/?mode=async&function=get_block&block_id=playlist_view_playlist_view&sort_by=added2fav_date&from=$current" -H 'X-Requested-With: XMLHttpRequest' | tr -d '\n\t\r')"
@@ -102,13 +105,15 @@ get_p_json() {
 }
 
 videos() {
-    local last current='1' t="$(ucurl 'https://www.eporner.video/latest-updates/' | tr -d '\n\t\r')" rh rn
-    last="$(hgrep -F 'li +class=last; a +data-parameters | "%(data-parameters)a\n"' <<< "$t" | sed 's/.*from://')"
+    #nav bar in latest-updates has been deleted
+    local last current='1' t="$(ucurl 'https://www.eporner.video/top-rated/' | tr -d '\n\t\r')" rh rn
+    last="$(reliq 'li .last; a data-parameters | "%(data-parameters)v\n"' <<< "$t" | sed 's/.*from://')"
     [ -z "$last" ] && last='1'
 
     while :
     do
-        for i in $(hgrep -F 'div +id=list_videos_latest_videos_list_items; a +href | "%(href)a\n"' <<< "$t")
+        #for i in $(reliq 'div #list_videos_latest_videos_list_items; a href | "%(href)v\n"' <<< "$t")
+        for i in $(reliq 'div #list_videos_common_videos_list_items; a href | "%(href)v\n"' <<< "$t")
         do
             [ "$(jobs | wc -l)" -gt "$threads" ] && wait %%
             rh="$(sha256sum <<< "$i")"
@@ -119,18 +124,19 @@ videos() {
         done
         ((current++))
         [ "$current" -gt "$last" ] && break
-        t="$(ucurl "https://www.eporner.video/latest-updates/?mode=async&function=get_block&block_id=list_videos_latest_videos_list&sort_by=post_date&from=$current" -H 'X-Requested-With: XMLHttpRequest' | tr -d '\n\t\r')"
+        t="$(ucurl "https://www.eporner.video/top-rated/?mode=async&function=get_block&block_id=list_videos_common_videos_list&sort_by=rating&from=$current" -H 'X-Requested-With: XMLHttpRequest' | tr -d '\n\t\r')"
+        #t="$(ucurl "https://www.eporner.video/latest-updates/?mode=async&function=get_block&block_id=list_videos_latest_videos_list&sort_by=post_date&from=$current" -H 'X-Requested-With: XMLHttpRequest' | tr -d '\n\t\r')"
     done
 }
 
 playlists() {
     local last current='1' t="$(ucurl 'https://www.eporner.video/playlists/' | tr -d '\n\t\r')" rh rn
-    last="$(hgrep -F 'li +class=last; a +data-parameters | "%(data-parameters)a\n"' <<< "$t" | sed 's/.*from://')"
+    last="$(reliq 'li .last; a data-parameters | "%(data-parameters)v\n"' <<< "$t" | sed 's/.*from://')"
     [ -z "$last" ] && last='1'
 
     while :
     do
-        for i in $(hgrep -F 'div +id=list_playlists_common_playlists_list; a +href +title | "%(href)a\n"' <<< "$t")
+        for i in $(reliq 'div #list_playlists_common_playlists_list; a href title | "%(href)v\n"' <<< "$t")
         do
             [ "$(jobs | wc -l)" -gt "$threads" ] && wait %%
             rh="$(sha256sum <<< "$i")"

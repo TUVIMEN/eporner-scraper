@@ -4,7 +4,7 @@ A bash script for archiving eporner videos and playlists metadata in json.
 
 ## Requirements
 
- - [hgrep](https://github.com/TUVIMEN/hgrep)
+ - [reliq](https://github.com/TUVIMEN/reliq)
  - [jq](https://github.com/stedolan/jq)
 
 ## Installation
