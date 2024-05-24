@@ -1,6 +1,6 @@
 # eporner-scraper
 
-A bash script for archiving eporner videos and playlists metadata in json.
+A bash script for archiving eporner videos, pornstars and playlists metadata in json.
 
 ## Requirements
 
@@ -13,22 +13,24 @@ A bash script for archiving eporner videos and playlists metadata in json.
 
 ## Json format
 
-Here's example of a [video](video-example.json) and [playlist](playlist-example.json).
-
-# Cloudflare
-
-This script has been made before cloudflare was used on this site. If you get empty values its likely because of it. To fix this go to [eporner](https://eporner.video) and open network tab in your browser (`CTRL+SHIFT+E` in firefox) then refresh tab. Right click on any element with eporner.video domain and choose `Copy value` `Copy as cURL`. Then replace curl in ucurl() with copied value. Delete url from it and at the end add `-s -g "$@"`.
-
-Cloudflare is just that terrible.
+Here's example of a [video](video-example.json), [pornstar](pornstar-example.json) and [playlist](playlist-example.json).
 
 ## Usage
 
 Results will be saved in files named by their sha256 hash of urls and placed in DIR.
 
-Download metadata of videos in DIR
+Download metadata of all videos
 
-    eporner-scraper -v DIR
+    eporner-scraper -v
 
-Download metadata of playlists in DIR
+Download metadata of all playlists using 8 threads
 
-    eporner-scraper -p DIR
+    eporner-scraper -t 8 -P
+
+Download metadata of all pornstars into DIR directory
+
+    eporner-scraper -d DIR -p
+
+Download metadata from URL
+
+    eporner-scraper URL

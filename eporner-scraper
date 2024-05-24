@@ -10,144 +10,221 @@ declare threads='4' dir='.'
 declare -r arg0="$(basename "$0")"
 
 usage() {
-    printf '%s [OPTION...] [DIR]\n' "$(basename "$0")"
-    printf "Archive eporner videos and playlists in json.\n"
+    printf '%s [OPTION...] [URL..]\n' "$(basename "$0")"
+    printf "Archive eporner videos, pornstars and playlists in json.\n"
     printf "Type of page depends on [-pv] options.\n"
-    printf "Pages will be saved in files named by their sha256 hash of urls and placed in DIR.\n\n"
+    printf "Pages will be saved in files named by their sha256 hash of urls.\n\n"
     printf "Options:\n"
+    printf "  -d DIR\tchange directory to DIR\n"
     printf "  -t NUM\tset number of used threads, by default set to 4\n"
-    printf "  -v\t\tvideos\n"
-    printf "  -p\t\tplaylists\n"
+    printf "  -v\t\tall videos\n"
+    printf "  -p\t\tall pornstars\n"
+    printf "  -P\t\tall playlists\n"
     printf "  -h\t\tshow help\n"
 }
 
 get_v_json() {
     local -r t="$(ucurl "$1" | tr -d '\n\r\t')"
-    local t2
+
     {
-    t2="${1#https://www.eporner.video/}"
-    echo "${t2%%/*}"
+    echo "{\"link\":\"$1\"}"
+    reliq '[0] script type="application/ld+json" | "%i\n"' <<< "$t" | jq -rcM '
+        def numstr(num): if num == null then null else num | tonumber end;
+        . | {
+            ("title"):.name,
+            ("duration"):(
+                (.duration | split("[A-Z]+";null)) as $d |
+                ($d[1] | tonumber)*3600+($d[2] | tonumber)*60+($d[3] | tonumber)
+            ),
+            ("thumbnails"):.thumbnailUrl,
+            ("width"):(.width | tonumber),
+            ("height"):(.height | tonumber),
+            ("description"):.description,
+            ("date"):.uploadDate,
+            ("interactions"):.interactionStatistic.userInteractionCount,
+            ("rating"):numstr(.aggregateRating.ratingValue?),
+            ("rated"):numstr(.aggregateRating.ratingCount?),
+            ("actors"):(
+                try (.actor | map(. | {
+                    ("name"):.name,
+                    ("link"):.url
+                })) catch []
+            )
+        }
+    '
     reliq '
-        . meta property=og:title content | "%(content)v\n",
-        . meta property=og:image content | "%(content)v\n",
-        . meta name=twitter:description content | "%(content)v\n",
-        . meta property=video:release_date content | "%(content)v\n",
-        . meta property=video:duration content | "%(content)v\n",
-        . meta property=og:video:width content | "%(content)v", meta +property=og:video:height +content | "x%(content)v\n",
-        . meta property=ya:ovs:views_total content | "%(content)v\n",
-        . meta property=ya:ovs:comments content | "%(content)v\n",
-        . meta property=ya:ovs:rating content | "%(content)v\n",
-        . * +data-votes | "%(data-votes)v\n",
-        . div .block-user; a -.avatar | "%i\n" / sed "s/<[^>]*>[^<]*<\/[^>]*>//g; s/ *$//",
-        . div .block-user; a -.avatar +href | "%(href)v\n" / sed "s/\/$//;s/.*\///",
-        . div #tab_video_info; a href=a>"/category/" | "%i\t" / echo "" "\n",
-        . div #tab_video_info; a href=a>"/tag/" | "%i\t" / echo "" "\n",
-        . div #tab_video_info; a href=a>"/model/"; * c@[0] | "%i\t" / echo "" "\n",
-        . div #tab_video_info; a href=a>"/get_file/" | "%i\t" / echo "" "\n",
-        . script m@"var flashvars = {" | "%i\n" / sed "s/.*timeline_screens_url: '\''//;s/'\''.*//",
-        . script m@"var flashvars = {" | "%i\n" / sed "s/.*timeline_screens_count: '\''//;s/'\''.*//",
-        . span +class=message m@"This video is a private video uploaded by " | "1\n"
+        .id.u input #fid value | "%(value)v",
+        .cutscenes div #cutscenes; a; {
+          .thumb a href | "%(href)v",
+          .time.u a onClick | "%(onClick)v" / sed "s/.*\.seek(//;s/).*//"
+        } | ,
+        .comments div #commentdivleft; div itemprop=comment l@[1]; {
+            .id.u * l@[0] | "%(id)v",
+            .nested.b * style l@[0] | "%(style)v" sed "s/.*:[1-9]0px.*/T/p;q",
+            .name a itemprop=creator | "%i",
+            .link a href itemprop=creator | "https://www.eporner.com%(href)v",
+            .flag div .flaginfo | "%i",
+            .genter div .gendertype | "%i",
+            .date span itemprop=commentTime; small | "%i",
+            .avatar div .commboxprofile; img src | "https://www.eporner.com%(src)v",
+            .text p itemprop=commentText | "%i",
+            .score.i div #b>cvote; * c@[0] | "%i"
+        } | ,
+        .categories.a("\n").s div #video-info; a href=b>"/cat/" | "%i\n",
+        div #video-info-tags; {
+            .uploader li .vit-uploader; a; {
+                .name a | "%i",
+                .link a href | "https://www.eporner.com%(href)v"
+            },
+            .channel li .vit-channel; a; {
+                .name a | "%i",
+                .link a href | "https://www.eporner.com%(href)v"
+            }
+        },
+        .views.u div #cinemaviews1 title=Views | "%i" tr ",",
+        script m@"EP.video.graph.csv"; {
+            .graph-csv.a(",").u script | "%i" sed "s/.*EP\.video\.graph\.csv = //;s/;.*//;s/[\[\]]//g",
+            .graph-labels.a(",").u script | "%i" sed "s/.*EP\.video\.graph\.labels = //;s/;.*//;s/[\[\]]//g"
+        },
+        .downloads div #hd-porn-dload; span .b>download-; a; {
+            .link a href | "https://www.eporner.com%(href)v",
+            .quality a | "%i" sed "s/.*(\([^,]*\),.*/\1/",
+            .format a | "%i" sed "s/.*(.*, \([^,]*\),.*/\1/",
+            .size a | "%i" sed "s/.*, \([^)]*\).*/\1/"
+        } | ,
     ' <<< "$t"
-    } | jq -RnMc '
-        .["id"]=input |
-        .["title"]=input |
-        .["thumbnail"]=input |
-        .["desc"]=input |
-        .["date"]=input |
-        .["duration"]=input |
-        .["resolution"]=input |
-        .["views"]=input |
-        .["comments"]=input |
-        .["rating"]=input |
-        .["votes"]=input |
-        .["author"]=input |
-        .["author_id"]=input |
-        .["categories"]=(input | split("\t")[:-1]) |
-        .["tags"]=(input | split("\t")[:-1]) |
-        .["models"]=(input | split("\t")[:-1]) |
-        .["formats"]=(input | split("\t")[:-1]) |
-        .["timeline"]=input |
-        .["timeline_count"]=input |
-        .["private"]=input'
+    } | jq -srcM '.[0]+.[1]+.[2]'
+}
+
+get_P_json() {
+    local next t="$(ucurl "$1" | tr -d '\n\t\r')" t2
+
+    {
+    echo "{\"link\":\"$1\"}"
+    reliq '
+        .author div #pprofiletopinfo; a; {
+            .name a; h1 | "%i",
+            .link a href | "https://www.eporner.com/%(href)v"
+        },
+        div .filler; div .plister; {
+            .title h2 | "%i" sed "s/[^:]* Playlist: //",
+            .views.u span title="Playlist views" | "%i",
+            div #likeclick; {
+                .likes.u div .likeup; [0] * l@[1:] c@[0] | "%i",
+                .dislikes.u div .likedown; [0] * l@[1:] c@[0] | "%i"
+            }
+        },
+        .description div #playlistdescription; * c@[0] | "%i"
+    ' <<< "$t"
+
+    while :
+    do
+        reliq '.videos.a("\n") div .mb id; div .mbcontent; a href | "https://www.eporner.com%(href)v\n"' <<< "$t"
+        next="$(reliq 'div .numlist2; a .nmnext href | "https://www.eporner.com%(href)v\n"' <<< "$t")"
+        [ -z "$next" ] && break
+        echo "$next" >&2
+        t="$(ucurl "$next" | tr -d '\n\t\r')"
+    done
+    } | jq -srcM '.[0] + .[1] + {"videos":(.[2:] | map(.videos[]))}'
 }
 
 get_p_json() {
-    local last current='1' t="$(ucurl "$1" | tr -d '\n\t\r')" t2
-    last="$(reliq 'li .last; a data-parameters | "%(data-parameters)v\n"' <<< "$t" | sed 's/.*from://')"
-    [ -z "$last" ] && last='1'
-    
     {
-    t2="${1#https://www.eporner.video/playlist/}"
-    echo "${t2%%/*}" #id
-    reliq '
-        . div .headline; h1 | "%i\n",
-        . div #tab_playlist_info; span m@"Views:"; em | "%i\n",
-        . div #tab_playlist_info; span m@"Updated:"; em | "%i\n",
-        . div #tab_playlist_info; div .username; a href | "%i\n",
-        . div #tab_playlist_info; div .username; a href | "%(href)v\n" / sed "s/\/$//;s/.*\///"
-    ' <<< "$t"
-    while :
-    do
-        reliq 'div #playlist_view_playlist_view_items; a href | "%(href)v\t"' <<< "$t"
-        ((current++))
-        [ "$current" -gt "$last" ] && break
-        t="$(ucurl "https://www.eporner.video/playlist/60/bideo/?mode=async&function=get_block&block_id=playlist_view_playlist_view&sort_by=added2fav_date&from=$current" -H 'X-Requested-With: XMLHttpRequest' | tr -d '\n\t\r')"
-    done #videos
-    echo
-    } | jq -RnMc '
-        .["id"]=input |
-        .["title"]=input |
-        .["views"]=input |
-        .["date"]=input |
-        .["author"]=input |
-        .["author_id"]=input |
-        .["videos"]=((input | split("\t"))[:-1])'
+    echo "{\"link\":\"$1\"}"
+    ucurl "$1" | tr -d '\n\t\r' | reliq '
+        div #pornstarbio; {
+            div .psbio .ps1; {
+                .name h1 | "%i",
+                .avatar img src | "%(src)v",
+                div .ps1a; {
+                    .videos.u a m@"Videos"; span | "%i",
+                    .photos.u a m@"Photos"; span | "%i"
+                }
+            },
+            div .psbio .ps3; {
+                .rank.u div l@[1] m@"Rank:"; span | "%i" tr ",",
+                .profile-views.u div l@[1] m@"Profile views:"; span | "%i" "%i" tr ",",
+                .video-views.u div l@[1] m@"Video views:"; span | "%i" "%i" tr ",",
+                .photo-views.u div l@[1] m@"Photo views:"; span | "%i" "%i" tr ",",
+                .subscribers.u div l@[1] m@"Subscribers:"; span | "%i" "%i" tr ","
+            },
+            .info-pieces div .psbio .ps2; li; {
+                .key span | "%i",
+                .value div .cllnumber | "%i"
+            } | ,
+            .aliases.a("\n") div .psbio .ps4; ul .psbioaliases; li | "%i\n",
+            .websites.a("\n") div .psbio .ps5; ul .pswebsites; a href | "%(href)v\n",
+            .bio div .psbio .ps6; div .psscrol; p | "%i\n"
+        },
+        .filmography  div .toptopbel2 C@"h2 m@\" Filmography\"" ~[0] *; tbody; tr; {
+            .name td [1] | "%i" sed "s/<.*//",
+            .year td [2] | "%i",
+            .distributor td [3] | "%i" sed "s/&amp;/&/g",
+            .notes td [4] | "%i"
+        } |
+    '
+    } | jq -srcM '.[0] + .[1]'
 }
 
-videos() {
-    #nav bar in latest-updates has been deleted
-    local last current='1' t="$(ucurl 'https://www.eporner.video/top-rated/' | tr -d '\n\t\r')" rh rn
-    last="$(reliq 'li .last; a data-parameters | "%(data-parameters)v\n"' <<< "$t" | sed 's/.*from://')"
-    [ -z "$last" ] && last='1'
-
-    while :
-    do
-        #for i in $(reliq 'div #list_videos_latest_videos_list_items; a href | "%(href)v\n"' <<< "$t")
-        for i in $(reliq 'div #list_videos_common_videos_list_items; a href | "%(href)v\n"' <<< "$t")
-        do
-            [ "$(jobs | wc -l)" -gt "$threads" ] && wait %%
-            rh="$(sha256sum <<< "$i")"
-            rn="${rh%  *}"
-            [ -e "$rn" ] && continue
-            echo "$i"
-            get_v_json "$i" > "$rn" &
-        done
-        ((current++))
-        [ "$current" -gt "$last" ] && break
-        t="$(ucurl "https://www.eporner.video/top-rated/?mode=async&function=get_block&block_id=list_videos_common_videos_list&sort_by=rating&from=$current" -H 'X-Requested-With: XMLHttpRequest' | tr -d '\n\t\r')"
-        #t="$(ucurl "https://www.eporner.video/latest-updates/?mode=async&function=get_block&block_id=list_videos_latest_videos_list&sort_by=post_date&from=$current" -H 'X-Requested-With: XMLHttpRequest' | tr -d '\n\t\r')"
-    done
+var_hash() {
+    local rn rh="$(sha256sum <<< "$1")"
+    echo "${rh%  *}"
 }
 
 playlists() {
-    local last current='1' t="$(ucurl 'https://www.eporner.video/playlists/' | tr -d '\n\t\r')" rh rn
-    last="$(reliq 'li .last; a data-parameters | "%(data-parameters)v\n"' <<< "$t" | sed 's/.*from://')"
-    [ -z "$last" ] && last='1'
-
-    while :
+    local next='https://www.eporner.com/best-playlists/' t name
+    while [ -n "$next" ]
     do
-        for i in $(reliq 'div #list_playlists_common_playlists_list; a href title | "%(href)v\n"' <<< "$t")
+        echo "$next" >&2
+        t="$(ucurl "$next" | tr -d '\n\t\r')"
+        for i in $(reliq 'div #container; div .mb; a href | "https://www.eporner.com%(href)v\n"' <<< "$t")
         do
+            echo "$i" >&2
             [ "$(jobs | wc -l)" -gt "$threads" ] && wait %%
-            rh="$(sha256sum <<< "$i")"
-            rn="${rh%  *}"
-            [ -e "$rn" ] && continue
+            name="$(var_hash <<< "$i")"
+            [ -e "$name" ] && continue
             echo "$i"
-            get_p_json "$i" > "$rn" &
+            get_P_json "$i" > "$name" &
         done
-        ((current++))
-        [ "$current" -gt "$last" ] && break
-        t="$(ucurl "https://www.eporner.video/playlists/?mode=async&function=get_block&block_id=list_playlists_common_playlists_list&sort_by=rating&from=$current" -H 'X-Requested-With: XMLHttpRequest' | tr -d '\n\t\r')"
+        next="$(reliq 'div .numlist2; a .nmnext href | "https://www.eporner.com%(href)v\n"' <<< "$t")"
+    done
+}
+
+videos() {
+    local next='https://www.eporner.com/' t name
+    while [ -n "$next" ]
+    do
+        echo "$next" >&2
+        t="$(ucurl "$next" | tr -d '\n\t\r')"
+        for i in $(reliq 'div #vidresults; div .mbcontent; a href | "https://www.eporner.com%(href)v\n"' <<< "$t")
+        do
+            echo "$i" >&2
+            [ "$(jobs | wc -l)" -gt "$threads" ] && wait %%
+            name="$(var_hash <<< "$i")"
+            [ -e "$name" ] && continue
+            echo "$i"
+            get_v_json "$i" > "$name" &
+        done
+        next="$(reliq 'div .numlist2; a .nmnext href | "https://www.eporner.com%(href)v\n"' <<< "$t")"
+    done
+}
+
+pornstars() {
+    local next='https://www.eporner.com/pornstar-list/' t name
+    while [ -n "$next" ]
+    do
+        echo "$next" >&2
+        t="$(ucurl "$next" | tr -d '\n\t\r')"
+        for i in $(reliq 'div .mbprofile; a l@[1] href | "https://www.eporner.com%(href)v\n"' <<< "$t")
+        do
+            echo "$i" >&2
+            [ "$(jobs | wc -l)" -gt "$threads" ] && wait %%
+            name="$(var_hash <<< "$i")"
+            [ -e "$name" ] && continue
+            echo "$i"
+            get_p_json "$i" > "$name" &
+        done
+        next="$(reliq 'div .numlist2; a .nmnext href | "https://www.eporner.com%(href)v\n"' <<< "$t")"
     done
 }
 
@@ -156,17 +233,33 @@ playlists() {
 while [ "$#" -gt 0 ]
 do
     case "$1" in
+        -d) cd "$2"; shift;;
         -t) threads="$2"; shift;;
-        -p) func='playlists';;
-        -v) func='videos';;
+        -p)
+            pornstars;;
+        -P)
+            playlists;;
+        -v)
+            videos;;
         -h) usage; exit 0;;
         -*) printf '%s: invalid argument -- %s\n' "$(basename "$0")" "$1" >&2; exit 1;;
-        *) dir="$1";;
+        *)
+            case "$1" in
+                https://www.eporner.com/video-*|https://www.eporner.com/hd-porn/*)
+                    o_name="$(var_hash <<< "$1")"
+                    echo "$1" >&2
+                    [ -e "$o_name" ] || get_v_json "$1" > "$o_name";;
+                https://www.eporner.com/pornstar/*)
+                    o_name="$(var_hash <<< "$1")"
+                    echo "$1" >&2
+                    [ -e "$o_name" ] || get_p_json "$1" > "$o_name";;
+                https://www.eporner.com/profile/*/playlist/*)
+                    o_name="$(var_hash <<< "$1")"
+                    echo "$1" >&2
+                    [ -e "$o_name" ] || get_P_json "$1" > "$o_name";;
+                *) printf '%s: incorrect url in "%s"\n' "$(basename "$0")" "$1" >&2; exit 1;;
+            esac
+            ;;
     esac
     shift
 done
-
-[ -z "$func" ] && { printf '%s: No option specified the type of pages\n' "$(basename "$0")" >&2; exit 1; }
-cd "$dir" || exit 1
-
-$func
