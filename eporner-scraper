@@ -143,10 +143,10 @@ get_p_json() {
             },
             div .psbio .ps3; {
                 .rank.u div l@[1] m@"Rank:"; span | "%i" tr ",",
-                .profile-views.u div l@[1] m@"Profile views:"; span | "%i" "%i" tr ",",
-                .video-views.u div l@[1] m@"Video views:"; span | "%i" "%i" tr ",",
-                .photo-views.u div l@[1] m@"Photo views:"; span | "%i" "%i" tr ",",
-                .subscribers.u div l@[1] m@"Subscribers:"; span | "%i" "%i" tr ","
+                .profile-views.u div l@[1] m@"Profile views:"; span | "%i" tr ",",
+                .video-views.u div l@[1] m@"Video views:"; span | "%i" tr ",",
+                .photo-views.u div l@[1] m@"Photo views:"; span | "%i" tr ",",
+                .subscribers.u div l@[1] m@"Subscribers:"; span | "%i" tr ","
             },
             .info-pieces div .psbio .ps2; li; {
                 .key span | "%i",
