@@ -67,7 +67,7 @@ get_v_json() {
             .genter div .gendertype | "%i",
             .date span itemprop=commentTime; small | "%i",
             .avatar div .commboxprofile; img src | "https://www.eporner.com%(src)v",
-            .text p itemprop=commentText | "%i",
+            .text p itemprop=commentText | "%Di",
             .score.i div #b>cvote; * c@[0] | "%i"
         } | ,
         .categories.a("\n").s div #video-info; a href=b>"/cat/" | "%i\n",
@@ -84,7 +84,7 @@ get_v_json() {
         .views.u div #cinemaviews1 title=Views | "%i" tr ",",
         script m@"EP.video.graph.csv"; {
             .graph-csv.a(",").u script | "%i" sed "s/.*EP\.video\.graph\.csv = //;s/;.*//;s/[\[\]]//g",
-            .graph-labels.a(",").u script | "%i" sed "s/.*EP\.video\.graph\.labels = //;s/;.*//;s/[\[\]]//g"
+            .graph-labels.a(",") script | "%i" sed "s/.*EP\.video\.graph\.labels = //;s/;.*//;s/\x27//g;s/\[//g;s/\]//g"
         },
         .downloads div #hd-porn-dload; span .b>download-; a; {
             .link a href | "https://www.eporner.com%(href)v",
@@ -103,8 +103,8 @@ get_P_json() {
     echo "{\"link\":\"$1\"}"
     reliq '
         .author div #pprofiletopinfo; a; {
-            .name a; h1 | "%i",
-            .link a href | "https://www.eporner.com/%(href)v"
+            .name a; h1 | "%Di",
+            .link a href | "https://www.eporner.com%(href)v"
         },
         div .filler; div .plister; {
             .title h2 | "%i" sed "s/[^:]* Playlist: //",
@@ -149,25 +149,25 @@ get_p_json() {
                 .subscribers.u div l@[1] m@"Subscribers:"; span | "%i" tr ","
             },
             .info-pieces div .psbio .ps2; li; {
-                .key span | "%i",
-                .value div .cllnumber | "%i"
+                .key span | "%Di" sed "s/:$//",
+                .value div .cllnumber | "%Di"
             } | ,
-            .aliases.a("\n") div .psbio .ps4; ul .psbioaliases; li | "%i\n",
+            .aliases.a("\n") div .psbio .ps4; ul .psbioaliases; li | "%Di\n",
             .websites.a("\n") div .psbio .ps5; ul .pswebsites; a href | "%(href)v\n",
-            .bio div .psbio .ps6; div .psscrol; p | "%i\n"
+            .bio div .psbio .ps6; div .psscrol; p | "%Di\n"
         },
         .filmography h2 m@" Filmography"; div .toptopbel2 ancestor@; [0] * ssub@; tbody; tr; {
-            .name td [1] | "%i" sed "s/<.*//",
+            .name td [1] | "%Di" sed "s/<.*//",
             .year td [2] | "%i",
-            .distributor td [3] | "%i" sed "s/&amp;/&/g",
-            .notes td [4] | "%i"
+            .distributor td [3] | "%Di",
+            .notes td [4] | "%Di"
         } |
     '
     } | jq -srcM '.[0] + .[1]'
 }
 
 var_hash() {
-    local rn rh="$(sha256sum <<< "$1")"
+    local rh="$(sha256sum <<< "$1")"
     echo "${rh%  *}"
 }
 
@@ -181,7 +181,7 @@ playlists() {
         do
             echo "$i" >&2
             [ "$(jobs | wc -l)" -gt "$threads" ] && wait %%
-            name="$(var_hash <<< "$i")"
+            name="$(var_hash "$i")"
             [ -e "$name" ] && continue
             echo "$i"
             get_P_json "$i" > "$name" &
@@ -200,7 +200,7 @@ videos() {
         do
             echo "$i" >&2
             [ "$(jobs | wc -l)" -gt "$threads" ] && wait %%
-            name="$(var_hash <<< "$i")"
+            name="$(var_hash "$i")"
             [ -e "$name" ] && continue
             echo "$i"
             get_v_json "$i" > "$name" &
@@ -219,7 +219,7 @@ pornstars() {
         do
             echo "$i" >&2
             [ "$(jobs | wc -l)" -gt "$threads" ] && wait %%
-            name="$(var_hash <<< "$i")"
+            name="$(var_hash "$i")"
             [ -e "$name" ] && continue
             echo "$i"
             get_p_json "$i" > "$name" &
@@ -246,15 +246,15 @@ do
         *)
             case "$1" in
                 https://www.eporner.com/video-*|https://www.eporner.com/hd-porn/*)
-                    o_name="$(var_hash <<< "$1")"
+                    o_name="$(var_hash "$1")"
                     echo "$1" >&2
                     [ -e "$o_name" ] || get_v_json "$1" > "$o_name";;
                 https://www.eporner.com/pornstar/*)
-                    o_name="$(var_hash <<< "$1")"
+                    o_name="$(var_hash "$1")"
                     echo "$1" >&2
                     [ -e "$o_name" ] || get_p_json "$1" > "$o_name";;
                 https://www.eporner.com/profile/*/playlist/*)
-                    o_name="$(var_hash <<< "$1")"
+                    o_name="$(var_hash "$1")"
                     echo "$1" >&2
                     [ -e "$o_name" ] || get_P_json "$1" > "$o_name";;
                 *) printf '%s: incorrect url in "%s"\n' "$(basename "$0")" "$1" >&2; exit 1;;
