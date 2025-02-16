@@ -156,7 +156,7 @@ get_p_json() {
             .websites.a("\n") div .psbio .ps5; ul .pswebsites; a href | "%(href)v\n",
             .bio div .psbio .ps6; div .psscrol; p | "%i\n"
         },
-        .filmography  div .toptopbel2 C@"h2 m@\" Filmography\""; [0] * ssub@; tbody; tr; {
+        .filmography h2 m@" Filmography"; div .toptopbel2 ancestor@; [0] * ssub@; tbody; tr; {
             .name td [1] | "%i" sed "s/<.*//",
             .year td [2] | "%i",
             .distributor td [3] | "%i" sed "s/&amp;/&/g",
